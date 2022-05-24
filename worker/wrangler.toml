@@ -1,0 +1,16 @@
+name = "kakrunk"
+main = "src/index.ts"
+compatibility_date = "2022-05-20"
+
+kv_namespaces = [
+  { binding = "shortenedLinks", id = "5fabaaba89dc4f90bd73f8c92d39b4fd", preview_id = "8aae06bf5f4f4a96a7fe30fd58f24082" }
+]
+
+[durable_objects]
+bindings = [
+  { name = "rooms", class_name = "GameRoom" },
+]
+
+[[migrations]]
+tag = "v1"
+new_classes = ["GameRoom"]

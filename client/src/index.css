@@ -1,0 +1,37 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  font-family: 'Inter', sans-serif;
+}
+
+:root {
+  --accent-1: 27, 231, 255;
+  --accent-2: 75, 231, 101;
+  --accent-3: 255, 186, 10;
+  --accent-4: 255, 80, 10;
+}
+
+.rgb-animation {
+  animation: bgcolor 60s infinite alternate;
+} 
+
+@keyframes bgcolor {
+  0% {
+      background-color: rgb(var(--accent-1));
+  }
+
+  50% {
+      background-color: rgb(var(--accent-2));
+  }
+
+  75% {
+      background-color: rgb(var(--accent-3));
+  }
+
+  100% {
+      background-color: rgb(var(--accent-4));
+  }
+}
