@@ -2,9 +2,9 @@ import React from "react"
 import clsx from "clsx"
 import { useActor } from "@xstate/react"
 import { PrimaryButton } from "../../../components/Button"
-import { Player } from "../../../machines/roomStateMachine"
 import { PropsWithClassName } from "../../../types"
 import { HostStateScreenProps } from "../HostScreen"
+import { Player } from "shared"
 
 export type WaitingStateScreenProps = HostStateScreenProps
 
@@ -27,7 +27,13 @@ export const WaitingStateScreen: React.FC<WaitingStateScreenProps> = ({ state, s
                     Players: <span className="font-bold">{room.context.players.length}</span>
                 </div>
 
-                <PrimaryButton className="text-xl">Start Game</PrimaryButton>
+                <PrimaryButton
+                    className="text-xl"
+                    disabled={room.context.players.length === 0}
+                    onClick={() => send("NEXT")}
+                >
+                    Start Game
+                </PrimaryButton>
             </div>
 
             {room.context.players.length === 0 ? (

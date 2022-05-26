@@ -13,6 +13,7 @@
     "react": "^18.0.0",
     "react-dom": "^18.0.0",
     "react-router-dom": "^6.3.0",
+    "shared": "*",
     "xstate": "^4.32.1"
   },
   "devDependencies": {

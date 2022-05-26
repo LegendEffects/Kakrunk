@@ -1,32 +1,13 @@
+import { ClientEvent, parseWebsocketMessage, Player, ServerEvent } from "shared"
 import { assign, createMachine, forwardTo } from "xstate"
-
-export type Player = {
-    name: string
-}
 
 export type RoomContext = {
     roomCode?: string
     players: Player[]
 }
 
-export type RoomEvent =
-    | {
-          type: "FIX"
-      }
-    | {
-          type: "SEND"
-      }
-    | {
-          type: "SUBMIT_NAME"
-          name: string
-      }
-    | {
-          type: "USER_CONNECT"
-          name: string
-      }
-
 export const createRoomStateMachine = (roomCode: string) => {
-    return createMachine<RoomContext, RoomEvent>({
+    return createMachine<RoomContext, ClientEvent | ServerEvent>({
         id: "room_machine",
         initial: "initializing",
         context: {
@@ -34,15 +15,20 @@ export const createRoomStateMachine = (roomCode: string) => {
             roomCode,
         },
         on: {
-            SEND: {
-                actions: forwardTo("socket"),
-            },
             SUBMIT_NAME: {
                 actions: forwardTo("socket"),
             },
-            USER_CONNECT: {
+            START_GAME: {
+                actions: forwardTo("socket"),
+            },
+            USER_CONNECTED: {
                 actions: assign({
-                    players: (ctx, event) => [...ctx.players, { name: event.name }],
+                    players: (ctx, event) => [...ctx.players, event.player],
+                }),
+            },
+            USER_DISCONNECTED: {
+                actions: assign({
+                    players: (ctx, event) => ctx.players.filter((p) => p.id !== event.id),
                 }),
             },
         },
@@ -56,16 +42,13 @@ export const createRoomStateMachine = (roomCode: string) => {
                 })
 
                 websocket.addEventListener("message", (e) => {
-                    const data = JSON.parse(e.data) as RoomEvent
+                    const data = parseWebsocketMessage<ServerEvent>(e.data)
 
-                    switch (data.type) {
-                        case "USER_CONNECT":
-                            send({
-                                type: "USER_CONNECT",
-                                name: data.name,
-                            })
-                            break
+                    if (!data) {
+                        return
                     }
+
+                    send(data)
                 })
 
                 return () => {

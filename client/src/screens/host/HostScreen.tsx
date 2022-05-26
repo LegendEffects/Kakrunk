@@ -2,9 +2,9 @@ import React from "react"
 import { useMachine } from "@xstate/react"
 import { hostStateMachine } from "../../machines/hostStateMachine"
 import { ChooseQuizStateScreen } from "./states/ChooseQuizStateScreen"
-import { ViewHostGameScreen } from "./ViewHostGameScreen"
 import { InterpreterFrom, StateFrom } from "xstate"
 import { WaitingStateScreen } from "./states/WaitingStateScreen"
+import CountdownStateScreen from "./states/CountdownStateScreen"
 
 export type HostStateScreenProps = {
     state: StateFrom<typeof hostStateMachine>
@@ -21,21 +21,10 @@ export const HostScreen: React.FC = () => {
     if (state.matches("waiting")) {
         return <WaitingStateScreen state={state} send={send} />
     }
-    // const [roomId, setRoomId] = useState<string | undefined>(undefined)
 
-    // useEffect(() => {
-    //     if (!roomId) {
-    //         return
-    //     }
-
-    //     const ws = new WebSocket(`ws://localhost:8787/api/rooms/${roomId}/websocket`)
-    // }, [roomId])
-
-    // if (!roomId) {
-    //     return <CreateGameScreen onRoomCreate={setRoomId} />
-    // }
-
-    // return <ViewHostGameScreen roomId={roomId} />
+    if (state.matches("countdown")) {
+        return <CountdownStateScreen />
+    }
 
     return null
 }

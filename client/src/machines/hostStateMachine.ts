@@ -1,56 +1,49 @@
-import { ActorRef, assign, createMachine, spawn } from "xstate"
+import { ClientEvent } from "shared"
+import { ActorRef, assign, createMachine, send, spawn } from "xstate"
 import { createGame } from "../actions/createGame"
-import { createRoomStateMachine, RoomEvent } from "./roomStateMachine"
-
-type Player = {
-    name: string
-}
+import { createRoomStateMachine } from "./roomStateMachine"
 
 export type GameContext = {
-    room?: ActorRef<RoomEvent>
+    room?: ActorRef<ClientEvent>
 }
 
-export const hostStateMachine = createMachine<GameContext>(
-    {
-        id: "game_machine",
-        initial: "chooseQuiz",
-        context: {
-            room: undefined,
-        },
-        states: {
-            chooseQuiz: {
-                on: {
-                    NEXT: "creating",
-                },
-            },
-            creating: {
-                invoke: {
-                    id: "create-screen",
-                    src: createGame,
-                    onDone: {
-                        target: "waiting",
-                        actions: assign({
-                            room: (_, event) => {
-                                return spawn(createRoomStateMachine(event.data.roomCode), { sync: true })
-                            },
-                        }),
-                    },
-                    onError: "error",
-                },
-            },
-            waiting: {
-                on: { NEXT: "question" },
-            },
-            question: {},
-            error: {},
-        },
-        on: {
-            NEW_GAME: {},
-        },
+export const hostStateMachine = createMachine<GameContext>({
+    id: "game_machine",
+    initial: "chooseQuiz",
+    context: {
+        room: undefined,
     },
-    {
-        actions: {
-            startGame: (context, event) => {},
+    states: {
+        chooseQuiz: {
+            on: {
+                NEXT: "creating",
+            },
         },
+        creating: {
+            invoke: {
+                id: "create-screen",
+                src: createGame,
+                onDone: {
+                    target: "waiting",
+                    actions: assign({
+                        room: (_, event) => {
+                            return spawn(createRoomStateMachine(event.data.roomCode), { sync: true })
+                        },
+                    }),
+                },
+                onError: "error",
+            },
+        },
+        waiting: {
+            on: { NEXT: "countdown" },
+        },
+        countdown: {
+            entry: send({ type: "START_GAME" }, { to: (ctx) => ctx.room }),
+        },
+        question: {},
+        error: {},
     },
-)
+    on: {
+        NEW_GAME: {},
+    },
+})

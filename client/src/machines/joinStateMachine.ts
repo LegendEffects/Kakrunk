@@ -1,8 +1,10 @@
-import { Actor, assign, createMachine, send, spawn } from "xstate"
-import { createRoomStateMachine, RoomContext, RoomEvent } from "./roomStateMachine"
+import { ClientEvent } from "shared"
+import { ActorRef, assign, createMachine, send, spawn } from "xstate"
+import { createRoomStateMachine } from "./roomStateMachine"
 
 export type JoinStateContext = {
-    room?: Actor<RoomContext, RoomEvent>
+    room?: ActorRef<ClientEvent>
+    name?: string
 }
 
 type JoinStateEvent =
@@ -26,7 +28,6 @@ export const joinStateMachine = createMachine<JoinStateContext, JoinStateEvent>(
             on: {
                 JOIN_ROOM: {
                     actions: assign({
-                        // @ts-expect-error I'm new to this whole xState thing, give me a break, I'm on a deadline!
                         room: (_, event) => {
                             return spawn(createRoomStateMachine(event.roomCode), { sync: true })
                         },
@@ -39,13 +40,14 @@ export const joinStateMachine = createMachine<JoinStateContext, JoinStateEvent>(
             id: "enterName",
             on: {
                 SUBMIT_NAME: {
-                    actions: send((_, e) => ({ type: "SUBMIT_NAME", name: e.name }), { to: (ctx) => ctx.room }),
-                    target: "joinRoom",
+                    actions: [
+                        assign({ name: (_, e) => e.name }),
+                        send((_, e) => ({ type: "SUBMIT_NAME", name: e.name }), { to: (ctx) => ctx.room }),
+                    ],
+                    target: "waitingStart",
                 },
             },
         },
-        joinRoom: {
-            type: "final",
-        },
+        waitingStart: {},
     },
 })

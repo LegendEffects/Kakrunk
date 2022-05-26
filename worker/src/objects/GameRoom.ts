@@ -2,27 +2,30 @@ import { animals, uniqueNamesGenerator } from "unique-names-generator"
 import { MAX_NAME_LENGTH } from "../config"
 import { Environment } from "../types"
 import { GameState } from "../types/GameState"
-import { ClientWebsocketEvent, WebsocketEvent } from "../types/WebsocketEvent"
+import { v4 as uuidv4 } from "uuid"
+import { ClientEvent, parseWebsocketMessage, Player, QuestionSet, ServerEvent } from "shared"
+import { defaultQuestionSet } from "../__DATA__"
 
-export type HostSession = {
+type WebsocketSession = {
     webSocket: WebSocket
     quit?: boolean
 }
 
-export type PlayerSession = {
-    webSocket: WebSocket
-    name: string
-    points: number
-    quit?: boolean
-}
+export type PlayerSession = WebsocketSession & Player
 
 export default class GameRoom implements DurableObject {
+    // CF Stuff
     protected storage: DurableObjectStorage
     protected env: Environment
-    protected state: GameState = "WAITING"
 
-    protected hostSession?: HostSession = undefined
+    // Sessions
+    protected hostSession?: WebsocketSession = undefined
     protected sessions: PlayerSession[] = []
+
+    // Game state
+    protected state: GameState = "WAITING"
+    protected questionSet: QuestionSet = defaultQuestionSet
+    protected currentQuestionIndex = -1
 
     constructor(state: DurableObjectState, env: Environment) {
         this.storage = state.storage
@@ -52,7 +55,7 @@ export default class GameRoom implements DurableObject {
     async handleHostSession(webSocket: WebSocket) {
         webSocket.accept()
 
-        const session: HostSession = {
+        const session: WebsocketSession = {
             webSocket,
         }
 
@@ -60,7 +63,24 @@ export default class GameRoom implements DurableObject {
 
         webSocket.addEventListener("message", async (message) => {
             try {
-                const data = JSON.parse(message.data.toString())
+                if (session.quit) {
+                    session.webSocket.close(1011, "WebSocket broken.")
+                }
+
+                // Parse message data
+                const data = parseWebsocketMessage<ClientEvent>(message.data.toString())
+
+                if (!data) {
+                    return
+                }
+
+                if (this.state === "WAITING" && data.type === "START_GAME") {
+                    this.state = "IN_PROGRESS"
+                    setTimeout(() => {
+                        this.nextQuestion()
+                    }, 3000)
+                    return
+                }
             } catch (e: any) {
                 // TODO: Remove
                 webSocket.send(JSON.stringify({ error: e.stack }))
@@ -81,9 +101,10 @@ export default class GameRoom implements DurableObject {
         webSocket.accept()
 
         const session: PlayerSession = {
+            id: uuidv4(),
             webSocket,
             name: "",
-            points: 0,
+            score: 0,
         }
 
         this.sessions.push(session)
@@ -92,14 +113,16 @@ export default class GameRoom implements DurableObject {
 
         webSocket.addEventListener("message", async (message) => {
             try {
-                const json = JSON.parse(message.data.toString())
-
-                // Enforce a type property to be on the event
-                if (!json.type) {
-                    return
+                if (session.quit) {
+                    session.webSocket.close(1011, "WebSocket broken.")
                 }
 
-                const data = json as ClientWebsocketEvent
+                // Parse message data
+                const data = parseWebsocketMessage<ClientEvent>(message.data.toString())
+
+                if (!data) {
+                    return
+                }
 
                 // Enforce a name submission before being able to submit any other events
                 if (!receivedUserDetails && data.type !== "SUBMIT_NAME") {
@@ -120,8 +143,12 @@ export default class GameRoom implements DurableObject {
                     }
 
                     this.sendToHost({
-                        type: "USER_CONNECT",
-                        name: session.name,
+                        type: "USER_CONNECTED",
+                        player: {
+                            id: session.id,
+                            name: session.name,
+                            score: session.score,
+                        },
                     })
 
                     receivedUserDetails = true
@@ -132,22 +159,11 @@ export default class GameRoom implements DurableObject {
             }
         })
 
-        const closeOrErrorHandler = () => {
-            session.quit = true
-            this.sessions = this.sessions.filter((member) => member !== session)
-            if (session.name) {
-                this.broadcast({
-                    type: "USER_LEAVE",
-                    name: session.name,
-                })
-            }
-        }
-
-        webSocket.addEventListener("close", closeOrErrorHandler)
-        webSocket.addEventListener("error", closeOrErrorHandler)
+        webSocket.addEventListener("close", () => this.handleQuit(session))
+        webSocket.addEventListener("error", () => this.handleQuit(session))
     }
 
-    sendToHost(event: WebsocketEvent) {
+    sendToHost(event: ServerEvent) {
         const message = JSON.stringify(event)
 
         if (!this.hostSession) {
@@ -162,16 +178,25 @@ export default class GameRoom implements DurableObject {
             this.hostSession.quit = true
 
             this.broadcast({
-                type: "HOST_DISCONNECT",
+                type: "HOST_DISCONNECTED",
             })
         }
     }
 
-    broadcast(event: WebsocketEvent) {
+    broadcast(event: ServerEvent) {
         const message = JSON.stringify(event)
 
         // There's a chance that a websocket session has disconnected, so we'll just notify everyone of this
         const quitters: PlayerSession[] = []
+
+        if (this.hostSession) {
+            try {
+                this.hostSession.webSocket.send(message)
+            } catch (e) {
+                this.hostSession.quit = true
+                console.log("Host disconnected")
+            }
+        }
 
         this.sessions = this.sessions.filter((session) => {
             try {
@@ -179,18 +204,39 @@ export default class GameRoom implements DurableObject {
                 return true
             } catch (e) {
                 // The websocket connection wasn't available when we sent the message
-                session.quit = true
                 quitters.push(session)
                 return false
             }
         })
 
         // Notify of leavers
-        quitters.forEach((session) => {
-            this.broadcast({
-                event: "USER_LEAVE",
-                name: session.name,
-            })
+        quitters.forEach(this.handleQuit)
+    }
+
+    handleQuit(session: PlayerSession) {
+        session.quit = true
+
+        // For now we'll remove the session in totality, in the future we could assign a token to each session so that a user can
+        // be reauthenticated to their session
+        this.sessions = this.sessions.filter((s) => s !== session)
+
+        this.sendToHost({
+            type: "USER_DISCONNECTED",
+            id: session.id,
+        })
+    }
+
+    nextQuestion() {
+        if (this.currentQuestionIndex + 1 > this.questionSet.length - 1) {
+            // Send finish state instead...
+            return
+        }
+
+        this.currentQuestionIndex++
+
+        this.broadcast({
+            type: "NEW_QUESTION",
+            question: this.questionSet[this.currentQuestionIndex],
         })
     }
 }
