@@ -13,6 +13,7 @@ import { Environment, IMethods, IRequest } from "./types"
 import GameRoom from "./objects/GameRoom"
 import CreateRoomHandler from "./api/handlers/CreateRoomHandler"
 import GetRoomHandler from "./api/handlers/GetRoomHandler"
+import JoinRoomHandler from "./api/handlers/JoinRoomHandler"
 
 const withCors = (req: Request) => {
     if (req.headers.get("Origin") !== null && req.headers.get("Access-Control-Request-Method") !== null) {
@@ -30,6 +31,7 @@ const withCors = (req: Request) => {
 const router = Router<IRequest, IMethods>()
     .all("*", withCors)
     .get("/api/rooms/:code/*", GetRoomHandler)
+    .get("/api/join/:code/*", JoinRoomHandler)
     .post("/api/rooms", CreateRoomHandler)
 
 const fetchHandler: ExportedHandlerFetchHandler<Environment> = (...args) => {

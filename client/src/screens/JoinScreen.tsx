@@ -1,38 +1,41 @@
-import React, { FormEvent, useCallback } from "react"
-import { Link } from "react-router-dom"
-import { PrimaryButton, SecondaryButton } from "../components/Button"
-import { Input } from "../components/Input"
+import React, { useCallback, useMemo } from "react"
+import { useMachine } from "@xstate/react"
+import { joinStateMachine } from "../machines/joinStateMachine"
+import EnterNameState from "./player/EnterNameState"
+import EnterRoomCodeState from "./player/EnterRoomCodeState"
 
 export type JoinScreenProps = {}
 
 export const JoinScreen: React.FC<JoinScreenProps> = () => {
-    const onSubmit = useCallback((e: FormEvent) => {
-        e.preventDefault()
+    const [state, send] = useMachine(useMemo(() => joinStateMachine, []))
 
-        const formData = new FormData(e.target as HTMLFormElement)
-
-        console.log(formData)
-    }, [])
-
-    return (
-        <div className="flex flex-col flex-1 rgb-animation">
-            <div className="flex justify-end px-8 py-4">
-                <Link to="host">
-                    <SecondaryButton>Host a game</SecondaryButton>
-                </Link>
-            </div>
-
-            <div className="flex flex-1 justify-center items-center">
-                <form onSubmit={onSubmit} action="#" className="p-4 bg-white rounded-md min-w-[320px]">
-                    <div>
-                        <Input className="w-full" placeholder="Room Code" minLength={6} />
-                    </div>
-
-                    <div>
-                        <PrimaryButton className="w-full mt-4">Join Game</PrimaryButton>
-                    </div>
-                </form>
-            </div>
-        </div>
+    const onSubmitRoomCode = useCallback(
+        (roomCode: string) => {
+            send({
+                type: "JOIN_ROOM",
+                roomCode,
+            })
+        },
+        [send],
     )
+
+    const onSubmitName = useCallback(
+        (name: string) => {
+            send({
+                type: "SUBMIT_NAME",
+                name,
+            })
+        },
+        [send],
+    )
+
+    if (state.matches("roomCode")) {
+        return <EnterRoomCodeState onSubmit={onSubmitRoomCode} />
+    }
+
+    if (state.matches("enterName")) {
+        return <EnterNameState onSubmit={onSubmitName} />
+    }
+
+    return null
 }

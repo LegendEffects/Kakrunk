@@ -4,7 +4,7 @@
 
 body {
   margin: 0;
-  font-family: 'Inter', sans-serif;
+  font-family: 'Noto Sans', sans-serif;
 }
 
 :root {
@@ -12,6 +12,22 @@ body {
   --accent-2: 75, 231, 101;
   --accent-3: 255, 186, 10;
   --accent-4: 255, 80, 10;
+}
+
+.bg-accent-1 {
+  background: rgb(var(--accent-1));
+}
+
+.bg-accent-2 {
+  background: rgb(var(--accent-2));
+}
+
+.bg-accent-3 {
+  background: rgb(var(--accent-3));
+}
+
+.bg-accent-4 {
+  background: rgb(var(--accent-4));
 }
 
 .rgb-animation {

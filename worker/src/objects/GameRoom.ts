@@ -2,7 +2,7 @@ import { animals, uniqueNamesGenerator } from "unique-names-generator"
 import { MAX_NAME_LENGTH } from "../config"
 import { Environment } from "../types"
 import { GameState } from "../types/GameState"
-import { WebsocketEvent } from "../types/WebsocketEvent"
+import { ClientWebsocketEvent, WebsocketEvent } from "../types/WebsocketEvent"
 
 export type HostSession = {
     webSocket: WebSocket
@@ -50,7 +50,6 @@ export default class GameRoom implements DurableObject {
     }
 
     async handleHostSession(webSocket: WebSocket) {
-        // @ts-expect-error
         webSocket.accept()
 
         const session: HostSession = {
@@ -71,7 +70,7 @@ export default class GameRoom implements DurableObject {
         // We want to give the WS some data as soon as they connect as host
         webSocket.send(
             JSON.stringify({
-                event: "HOST_CONNECT",
+                type: "HOST_CONNECT",
             }),
         )
 
@@ -79,7 +78,6 @@ export default class GameRoom implements DurableObject {
     }
 
     async handlePlayerSession(webSocket: WebSocket) {
-        // @ts-expect-error
         webSocket.accept()
 
         const session: PlayerSession = {
@@ -89,21 +87,42 @@ export default class GameRoom implements DurableObject {
         }
 
         this.sessions.push(session)
+
         let receivedUserDetails = false
 
         webSocket.addEventListener("message", async (message) => {
             try {
-                const data = JSON.parse(message.data.toString())
+                const json = JSON.parse(message.data.toString())
 
-                if (!receivedUserDetails) {
+                // Enforce a type property to be on the event
+                if (!json.type) {
+                    return
+                }
+
+                const data = json as ClientWebsocketEvent
+
+                // Enforce a name submission before being able to submit any other events
+                if (!receivedUserDetails && data.type !== "SUBMIT_NAME") {
+                    return
+                }
+
+                //
+                // Submit name
+                if (!receivedUserDetails && data.type === "SUBMIT_NAME") {
                     session.name =
                         data.name || uniqueNamesGenerator({ dictionaries: [animals], length: 2, separator: " " })
 
+                    // TODO: better error handling of this
                     if (session.name.length > MAX_NAME_LENGTH) {
                         webSocket.send(JSON.stringify({ error: "Name too long." }))
                         webSocket.close(1009, "Name too long.")
                         return
                     }
+
+                    this.sendToHost({
+                        type: "USER_CONNECT",
+                        name: session.name,
+                    })
 
                     receivedUserDetails = true
                 }
@@ -118,7 +137,7 @@ export default class GameRoom implements DurableObject {
             this.sessions = this.sessions.filter((member) => member !== session)
             if (session.name) {
                 this.broadcast({
-                    event: "USER_LEAVE",
+                    type: "USER_LEAVE",
                     name: session.name,
                 })
             }
@@ -126,6 +145,26 @@ export default class GameRoom implements DurableObject {
 
         webSocket.addEventListener("close", closeOrErrorHandler)
         webSocket.addEventListener("error", closeOrErrorHandler)
+    }
+
+    sendToHost(event: WebsocketEvent) {
+        const message = JSON.stringify(event)
+
+        if (!this.hostSession) {
+            // Should be unreachable
+            console.warn("Managed to try send an event to a session without a host... interesting one that")
+            return
+        }
+
+        try {
+            this.hostSession.webSocket.send(message)
+        } catch (e) {
+            this.hostSession.quit = true
+
+            this.broadcast({
+                type: "HOST_DISCONNECT",
+            })
+        }
     }
 
     broadcast(event: WebsocketEvent) {
