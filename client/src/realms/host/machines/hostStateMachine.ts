@@ -13,6 +13,7 @@ import { createRoomStateMachine } from "../../../machines/roomStateMachine"
 import { createHostQuestionStateMachine, HostQuestionStateEvent } from "./hostQuestionStateMachine"
 
 export type GameContext = {
+    quizId: string
     room?: ActorRef<ClientEvent>
     question?: ActorRef<HostQuestionStateEvent>
     questionSet?: QuestionSetMeta
@@ -26,83 +27,85 @@ export type HostStateEvent =
           type: "NEXT"
       }
 
-export const hostStateMachine = createMachine<GameContext, HostStateEvent>({
-    id: "game_machine",
-    initial: "chooseQuiz",
-    context: {
-        room: undefined,
-        question: undefined,
-        questionSet: undefined,
-    },
-    states: {
-        chooseQuiz: {
-            on: {
-                NEXT: "creating",
-            },
+export const createHostStateMachine = (quizId: string) =>
+    createMachine<GameContext, HostStateEvent>({
+        id: "game_machine",
+        initial: "chooseQuiz",
+        context: {
+            quizId,
+            room: undefined,
+            question: undefined,
+            questionSet: undefined,
         },
-        creating: {
-            invoke: {
-                id: "create-screen",
-                src: createGame,
-                onDone: {
-                    target: "waiting",
-                    actions: assign({
-                        room: (_, event) => {
-                            return spawn(createRoomStateMachine(event.data.roomCode), { sync: true })
-                        },
-                    }),
-                },
-                onError: "error",
-            },
-        },
-        waiting: {
-            on: { NEXT: "countdown" },
-        },
-        countdown: {
-            entry: send({ type: "START_GAME" }, { to: (ctx) => ctx.room as ActorRef<ClientEvent> }),
-            on: {
-                NEW_QUESTION: {
-                    target: "question",
-                    actions: actions.pure((_, event) => actions.raise(event)), // pass it to the new_queston handler on the question screen
+        states: {
+            chooseQuiz: {
+                on: {
+                    NEXT: "creating",
                 },
             },
-        },
-        question: {
-            on: {
-                NEW_QUESTION: {
-                    actions: assign({
-                        question: (_, e) => spawn(createHostQuestionStateMachine(e.question, e.index), { sync: true }),
-                    }),
-                },
-                NEXT_QUESTION: {
-                    actions: send((_, e) => e, { to: (ctx) => ctx.room as ActorRef<NextQuestionEvent> }),
-                },
-                CHANGE_QUESTION_PHASE: {
-                    actions: send((_, e) => e, { to: (ctx) => ctx.question as ActorRef<HostQuestionStateEvent> }),
-                },
-                ANSWER_RECEIVED: {
-                    actions: send((_, e) => e, { to: (ctx) => ctx.question as ActorRef<AnswerReceivedEvent> }),
-                },
-                QUESTION_SUMMARY: {
-                    actions: send((_, e) => e, { to: (ctx) => ctx.question as ActorRef<QuestionSummaryEvent> }),
-                },
-                UPDATE_SCOREBOARD: {
-                    actions: assign({ scoreboard: (_, e) => e.players }),
-                },
-                GAME_FINISHED: {
-                    target: "finished",
-                    actions: assign({ scoreboard: (_, e) => e.players }),
+            creating: {
+                invoke: {
+                    id: "create-screen",
+                    src: (ctx) => createGame(ctx.quizId),
+                    onDone: {
+                        target: "waiting",
+                        actions: assign({
+                            room: (_, event) => spawn(createRoomStateMachine(event.data.roomCode), { sync: true }),
+                        }),
+                    },
+                    onError: "error",
                 },
             },
+            waiting: {
+                on: { NEXT: "countdown" },
+            },
+            countdown: {
+                entry: send({ type: "START_GAME" }, { to: (ctx) => ctx.room as ActorRef<ClientEvent> }),
+                on: {
+                    NEW_QUESTION: {
+                        target: "question",
+                        // @ts-expect-error pass it to the new_question handler on the question screen
+                        actions: actions.pure((_, event) => actions.raise(event)),
+                    },
+                },
+            },
+            question: {
+                on: {
+                    NEW_QUESTION: {
+                        actions: assign({
+                            question: (_, e) =>
+                                spawn(createHostQuestionStateMachine(e.question, e.index), { sync: true }),
+                        }),
+                    },
+                    NEXT_QUESTION: {
+                        actions: send((_, e) => e, { to: (ctx) => ctx.room as ActorRef<NextQuestionEvent> }),
+                    },
+                    CHANGE_QUESTION_PHASE: {
+                        actions: send((_, e) => e, { to: (ctx) => ctx.question as ActorRef<HostQuestionStateEvent> }),
+                    },
+                    ANSWER_RECEIVED: {
+                        actions: send((_, e) => e, { to: (ctx) => ctx.question as ActorRef<AnswerReceivedEvent> }),
+                    },
+                    QUESTION_SUMMARY: {
+                        actions: send((_, e) => e, { to: (ctx) => ctx.question as ActorRef<QuestionSummaryEvent> }),
+                    },
+                    UPDATE_SCOREBOARD: {
+                        actions: assign({ scoreboard: (_, e) => e.players }),
+                    },
+                    GAME_FINISHED: {
+                        target: "finished",
+                        actions: assign({ scoreboard: (_, e) => e.players }),
+                    },
+                },
+            },
+            finished: {},
+            error: {},
         },
-        finished: {},
-        error: {},
-    },
-    on: {
-        HOST_CONNECTED: {
-            actions: assign({
-                questionSet: (_, e) => e.questionSetMeta,
-            }),
+        on: {
+            HOST_CONNECTED: {
+                actions: assign({
+                    questionSet: (_, e) => e.questionSetMeta,
+                }),
+            },
         },
-    },
-})
+    })

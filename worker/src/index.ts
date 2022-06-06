@@ -12,8 +12,8 @@ import { Router } from "itty-router"
 import { Environment, IMethods, IRequest } from "./types"
 import GameRoom from "./objects/GameRoom"
 import CreateRoomHandler from "./api/handlers/CreateRoomHandler"
-import GetRoomHandler from "./api/handlers/GetRoomHandler"
 import JoinRoomHandler from "./api/handlers/JoinRoomHandler"
+import ListQuizHandler from "./api/handlers/ListQuizHandler"
 
 const withCors = (req: Request) => {
     if (req.headers.get("Origin") !== null && req.headers.get("Access-Control-Request-Method") !== null) {
@@ -30,7 +30,7 @@ const withCors = (req: Request) => {
 
 const router = Router<IRequest, IMethods>()
     .all("*", withCors)
-    .get("/api/rooms/:code/*", GetRoomHandler)
+    .get("/api/quizzes", ListQuizHandler)
     .get("/api/join/:code/*", JoinRoomHandler)
     .post("/api/rooms", CreateRoomHandler)
 
@@ -54,10 +54,16 @@ const fetchHandler: ExportedHandlerFetchHandler<Environment> = (...args) => {
                     })
                 }
 
-                response.headers.set("Access-Control-Allow-Origin", "*")
-                response.headers.set("Allow", "GET, POST, PATCH, DELETE, HEAD, OPTIONS")
+                if (response.webSocket) {
+                    return response
+                }
 
-                return response
+                const modifiedResponse = response.clone()
+
+                modifiedResponse.headers.set("Access-Control-Allow-Origin", "*")
+                modifiedResponse.headers.set("Allow", "GET, POST, PATCH, DELETE, HEAD, OPTIONS")
+
+                return modifiedResponse
             })
     )
 }

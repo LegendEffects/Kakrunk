@@ -58,7 +58,9 @@ export const createRoomStateMachine = (roomCode: string) => {
                 invoke: {
                     id: "socket",
                     src: () => (send, onEvent) => {
-                        const websocket = new WebSocket(`ws://localhost:8787/api/join/${roomCode}/websocket`)
+                        const websocket = new WebSocket(
+                            `${import.meta.env.VITE_BASE_WS_URL}/join/${roomCode}/websocket`,
+                        )
 
                         onEvent((event) => {
                             websocket.send(JSON.stringify(event))

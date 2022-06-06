@@ -8,7 +8,7 @@ export interface Environment {
 }
 
 export interface IRouteHandler {
-    (request: IRequest, env: Environment, context: ExecutionContext): Response
+    (request: IRequest, env: Environment, context: ExecutionContext): Response | Promise<Response>
 }
 
 export interface Route {

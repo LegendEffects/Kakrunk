@@ -1,8 +1,9 @@
 import { QuestionSetMeta } from "shared"
-import { BASE_URL } from "../config"
 
-export async function createGame(): Promise<{ roomId: string; roomCode: string; questionSetMeta: QuestionSetMeta }> {
-    const res = await fetch(`${BASE_URL}/rooms`, {
+export async function createGame(
+    quizId: string,
+): Promise<{ roomId: string; roomCode: string; questionSetMeta: QuestionSetMeta }> {
+    const res = await fetch(`${import.meta.env.VITE_BASE_API_URL}/rooms?quiz=${quizId}`, {
         method: "POST",
         body: JSON.stringify({}),
         headers: {

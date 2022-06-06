@@ -3,8 +3,8 @@ import { MAX_NAME_LENGTH } from "../config"
 import { Environment } from "../types"
 import { GameState } from "../types/GameState"
 import { v4 as uuidv4 } from "uuid"
-import { ClientEvent, config, parseWebsocketMessage, Player, Question, QuestionSet, ServerEvent } from "shared"
-import { defaultQuestionSet, defaultQuestionSetMeta } from "../__DATA__"
+import { ClientEvent, config, parseWebsocketMessage, Player, QuestionSet, Quiz, ServerEvent } from "shared"
+import { hardCodedQuestionSets } from "../__DATA__"
 import generateScoreboard from "../functions/generateScoreboard"
 
 type WebsocketSession = {
@@ -14,13 +14,16 @@ type WebsocketSession = {
 
 type CurrentQuestion = {
     index: number
-    askedAt: Date
+    askedAt: number
     timeout?: ReturnType<typeof setTimeout>
 }
 
 export type PlayerSession = WebsocketSession &
     Player & {
-        answer?: number
+        answer?: {
+            time: number
+            index: number
+        }
     }
 
 export default class GameRoom implements DurableObject {
@@ -37,7 +40,9 @@ export default class GameRoom implements DurableObject {
 
     // Game state
     protected state: GameState = "WAITING"
-    protected questionSet: QuestionSet = defaultQuestionSet
+    protected quiz!: Quiz
+
+    protected questionSet!: QuestionSet
 
     protected currentQuestion?: CurrentQuestion = undefined
 
@@ -51,7 +56,17 @@ export default class GameRoom implements DurableObject {
 
         if (!this.setup) {
             this.setup = true
+
             await this.storage.put("shortCode", url.searchParams.get("code"))
+
+            const found = hardCodedQuestionSets.find((set) => set.id === url.searchParams.get("quiz"))
+
+            if (!found) {
+                throw new Error("managed to create a quiz with an invalid id")
+            }
+
+            this.quiz = found
+            this.questionSet = found.questions
         }
 
         switch (url.pathname) {
@@ -119,7 +134,10 @@ export default class GameRoom implements DurableObject {
         // We want to give the WS some data as soon as they connect as host
         this.sendToHost({
             type: "HOST_CONNECTED",
-            questionSetMeta: defaultQuestionSetMeta,
+            questionSetMeta: {
+                title: this.quiz.title,
+                length: this.quiz.questions.length,
+            },
         })
 
         // TODO: Disconnect state
@@ -186,7 +204,11 @@ export default class GameRoom implements DurableObject {
                 //
                 // Submit answer
                 if (data.type === "SUBMIT_ANSWER" && !session.answer) {
-                    session.answer = data.answer
+                    session.answer = {
+                        time: new Date().getTime(),
+                        index: data.answer,
+                    }
+
                     this.sendToHost({ type: "ANSWER_RECEIVED" })
 
                     // Check whether all players have submitted answers
@@ -280,7 +302,7 @@ export default class GameRoom implements DurableObject {
         if (!this.currentQuestion) {
             this.currentQuestion = {
                 index: 0,
-                askedAt: new Date(),
+                askedAt: new Date().getTime() + config.QUESTION_PREVIEW_TIME * 1000,
             }
         } else {
             if (this.currentQuestion.index + 1 > this.questionSet.length - 1) {
@@ -290,7 +312,7 @@ export default class GameRoom implements DurableObject {
 
             this.currentQuestion = {
                 index: this.currentQuestion.index + 1,
-                askedAt: new Date(),
+                askedAt: new Date().getTime() + config.QUESTION_PREVIEW_TIME * 1000,
             }
         }
 
@@ -344,14 +366,19 @@ export default class GameRoom implements DurableObject {
 
         // Mark all of the players answers
         this.sessions.forEach((session) => {
-            if (session.answer !== undefined && question.answers[session.answer]) {
-                answers[session.answer] = answers[session.answer] + 1
+            if (session.answer !== undefined && question.answers[session.answer.index]) {
+                answers[session.answer.index] = answers[session.answer.index] + 1
             }
 
-            const correct = session.answer !== undefined && question.answers[session.answer]?.correct === true
+            const correct = session.answer !== undefined && question.answers[session.answer.index]?.correct === true
 
             if (correct) {
-                session.score = session.score + 1000
+                // Calculate how many points the user should be awarded based upon how fast they answered the question
+                const millisecondsElapsedBeforeAnswer =
+                    (session.answer?.time ?? 0) - (this.currentQuestion?.askedAt ?? 0)
+                const inverseQuestionProgress = 1 - millisecondsElapsedBeforeAnswer / (question.timeLimit * 1000)
+
+                session.score = session.score + Math.round(1000 * inverseQuestionProgress)
             }
 
             this.sendToSession(session, {

@@ -63,7 +63,8 @@ export const playerStateMachine = createMachine<PlayerStateContext, PlayerStateE
             on: {
                 NEW_QUESTION: {
                     target: "question",
-                    actions: actions.pure((_, event) => actions.raise(event)), // pass it to the new_queston handler on the question screen
+                    // @ts-expect-error pass it to the new_question handler on the question screen
+                    actions: actions.pure((_, event) => actions.raise(event)),
                 },
             },
         },
