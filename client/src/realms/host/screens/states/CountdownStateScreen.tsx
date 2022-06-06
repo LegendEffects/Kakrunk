@@ -1,17 +1,8 @@
-import React, { useEffect, useState } from "react"
+import React from "react"
+import useCountdown from "../../../../hooks/useCountdown"
 
 const CountdownStateScreen: React.FC = () => {
-    const [count, setCount] = useState(3)
-
-    useEffect(() => {
-        const interval = setInterval(() => {
-            setCount((count) => count - 1)
-        }, 1000)
-
-        return () => {
-            clearInterval(interval)
-        }
-    }, [])
+    const [count] = useCountdown(3)
 
     return (
         <div className="flex flex-col flex-1 justify-center items-center rgb-animation">

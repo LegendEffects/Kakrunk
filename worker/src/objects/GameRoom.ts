@@ -3,20 +3,33 @@ import { MAX_NAME_LENGTH } from "../config"
 import { Environment } from "../types"
 import { GameState } from "../types/GameState"
 import { v4 as uuidv4 } from "uuid"
-import { ClientEvent, parseWebsocketMessage, Player, QuestionSet, ServerEvent } from "shared"
-import { defaultQuestionSet } from "../__DATA__"
+import { ClientEvent, config, parseWebsocketMessage, Player, Question, QuestionSet, ServerEvent } from "shared"
+import { defaultQuestionSet, defaultQuestionSetMeta } from "../__DATA__"
+import generateScoreboard from "../functions/generateScoreboard"
 
 type WebsocketSession = {
     webSocket: WebSocket
     quit?: boolean
 }
 
-export type PlayerSession = WebsocketSession & Player
+type CurrentQuestion = {
+    index: number
+    askedAt: Date
+    timeout?: ReturnType<typeof setTimeout>
+}
+
+export type PlayerSession = WebsocketSession &
+    Player & {
+        answer?: number
+    }
 
 export default class GameRoom implements DurableObject {
     // CF Stuff
     protected storage: DurableObjectStorage
     protected env: Environment
+
+    // Init
+    protected setup = false
 
     // Sessions
     protected hostSession?: WebsocketSession = undefined
@@ -25,7 +38,8 @@ export default class GameRoom implements DurableObject {
     // Game state
     protected state: GameState = "WAITING"
     protected questionSet: QuestionSet = defaultQuestionSet
-    protected currentQuestionIndex = -1
+
+    protected currentQuestion?: CurrentQuestion = undefined
 
     constructor(state: DurableObjectState, env: Environment) {
         this.storage = state.storage
@@ -34,6 +48,11 @@ export default class GameRoom implements DurableObject {
 
     async fetch(request: Request): Promise<Response> {
         const url = new URL(request.url)
+
+        if (!this.setup) {
+            this.setup = true
+            await this.storage.put("shortCode", url.searchParams.get("code"))
+        }
 
         switch (url.pathname) {
             case "/websocket":
@@ -79,6 +98,16 @@ export default class GameRoom implements DurableObject {
                     setTimeout(() => {
                         this.nextQuestion()
                     }, 3000)
+
+                    return
+                }
+
+                if (data.type === "NEXT_QUESTION") {
+                    if (this.currentQuestion?.timeout) {
+                        clearTimeout(this.currentQuestion.timeout)
+                    }
+
+                    this.nextQuestion()
                     return
                 }
             } catch (e: any) {
@@ -88,11 +117,10 @@ export default class GameRoom implements DurableObject {
         })
 
         // We want to give the WS some data as soon as they connect as host
-        webSocket.send(
-            JSON.stringify({
-                type: "HOST_CONNECT",
-            }),
-        )
+        this.sendToHost({
+            type: "HOST_CONNECTED",
+            questionSetMeta: defaultQuestionSetMeta,
+        })
 
         // TODO: Disconnect state
     }
@@ -152,6 +180,21 @@ export default class GameRoom implements DurableObject {
                     })
 
                     receivedUserDetails = true
+                    return
+                }
+
+                //
+                // Submit answer
+                if (data.type === "SUBMIT_ANSWER" && !session.answer) {
+                    session.answer = data.answer
+                    this.sendToHost({ type: "ANSWER_RECEIVED" })
+
+                    // Check whether all players have submitted answers
+                    if (this.sessions.find((session) => session.answer === undefined) === undefined) {
+                        this.finishQuestion()
+                    }
+
+                    return
                 }
             } catch (e: any) {
                 // TODO: Remove
@@ -177,26 +220,17 @@ export default class GameRoom implements DurableObject {
         } catch (e) {
             this.hostSession.quit = true
 
-            this.broadcast({
+            this.sendToPlayers({
                 type: "HOST_DISCONNECTED",
             })
         }
     }
 
-    broadcast(event: ServerEvent) {
+    sendToPlayers(event: ServerEvent) {
         const message = JSON.stringify(event)
 
         // There's a chance that a websocket session has disconnected, so we'll just notify everyone of this
         const quitters: PlayerSession[] = []
-
-        if (this.hostSession) {
-            try {
-                this.hostSession.webSocket.send(message)
-            } catch (e) {
-                this.hostSession.quit = true
-                console.log("Host disconnected")
-            }
-        }
 
         this.sessions = this.sessions.filter((session) => {
             try {
@@ -213,6 +247,19 @@ export default class GameRoom implements DurableObject {
         quitters.forEach(this.handleQuit)
     }
 
+    sendToSession(session: PlayerSession, event: ServerEvent) {
+        try {
+            session.webSocket.send(JSON.stringify(event))
+        } catch (e) {
+            this.handleQuit(session)
+        }
+    }
+
+    broadcast(event: ServerEvent) {
+        this.sendToHost(event)
+        this.sendToPlayers(event)
+    }
+
     handleQuit(session: PlayerSession) {
         session.quit = true
 
@@ -226,17 +273,122 @@ export default class GameRoom implements DurableObject {
         })
     }
 
+    //
+    // Question Phasing
+    //
     nextQuestion() {
-        if (this.currentQuestionIndex + 1 > this.questionSet.length - 1) {
-            // Send finish state instead...
+        if (!this.currentQuestion) {
+            this.currentQuestion = {
+                index: 0,
+                askedAt: new Date(),
+            }
+        } else {
+            if (this.currentQuestion.index + 1 > this.questionSet.length - 1) {
+                this.endGame()
+                return
+            }
+
+            this.currentQuestion = {
+                index: this.currentQuestion.index + 1,
+                askedAt: new Date(),
+            }
+        }
+
+        // Reset player answers
+        this.sessions.forEach((session) => {
+            session.answer = undefined
+        })
+
+        const question = this.questionSet[this.currentQuestion.index]
+
+        // Send to host with full details
+        this.sendToHost({
+            type: "NEW_QUESTION",
+            question,
+            index: this.currentQuestion.index,
+        })
+
+        // Send to players without the correct answer flag
+        this.sendToPlayers({
+            type: "NEW_QUESTION",
+            question: {
+                ...question,
+                answers: question.answers.map(({ correct, ...answer }) => answer),
+            },
+            index: this.currentQuestion.index,
+        })
+
+        setTimeout(() => {
+            this.broadcast({
+                type: "CHANGE_QUESTION_PHASE",
+                phase: "view",
+            })
+
+            if (this.currentQuestion) {
+                this.currentQuestion.timeout = setTimeout(() => {
+                    this.finishQuestion()
+                }, question.timeLimit * 1000)
+            }
+        }, config.QUESTION_PREVIEW_TIME * 1000)
+    }
+
+    finishQuestion() {
+        if (!this.currentQuestion) {
+            console.error("Reached question finish without a current question")
             return
         }
 
-        this.currentQuestionIndex++
+        const question = this.questionSet[this.currentQuestion.index]
 
-        this.broadcast({
-            type: "NEW_QUESTION",
-            question: this.questionSet[this.currentQuestionIndex],
+        const answers: number[] = new Array(question.answers.length).fill(0)
+
+        // Mark all of the players answers
+        this.sessions.forEach((session) => {
+            if (session.answer !== undefined && question.answers[session.answer]) {
+                answers[session.answer] = answers[session.answer] + 1
+            }
+
+            const correct = session.answer !== undefined && question.answers[session.answer]?.correct === true
+
+            if (correct) {
+                session.score = session.score + 1000
+            }
+
+            this.sendToSession(session, {
+                type: "ANSWER_MARKED",
+                score: session.score,
+                correct,
+            })
         })
+
+        this.sendToHost({
+            type: "QUESTION_SUMMARY",
+            summary: answers,
+        })
+
+        this.sendToHost({
+            type: "UPDATE_SCOREBOARD",
+            players: generateScoreboard(this.sessions),
+        })
+    }
+
+    async endGame() {
+        this.broadcast({
+            type: "GAME_FINISHED",
+            players: generateScoreboard(this.sessions),
+        })
+
+        console.log("Closed")
+
+        // Close everything, the clients should be able to handle themselves
+        this.hostSession?.webSocket.close(1011, "Game Finished")
+        this.sessions.forEach((player) => player.webSocket.close(1011, "Game Finished"))
+
+        // Delete the shortened code
+        const shortCode = await this.storage.get<string>("shortCode")
+
+        if (shortCode) {
+            this.env.shortenedLinks.delete(shortCode)
+        }
     }
 }

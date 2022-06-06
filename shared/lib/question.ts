@@ -1,10 +1,17 @@
-export type Answer = 1 | 2 | 3 | 4
+export type Answer = {
+    text: string
+    correct?: boolean
+}
 
 export type Question = {
     text: string
-    answer: Answer
+    answers: Answer[]
+    timeLimit: number
 }
 
-export type PlayerQuestion = Omit<Question, "answer">
-
 export type QuestionSet = Question[]
+
+export type QuestionSetMeta = {
+    title: string
+    length: number
+}

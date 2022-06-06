@@ -8,26 +8,10 @@ body {
 }
 
 :root {
-  --accent-1: 27, 231, 255;
-  --accent-2: 75, 231, 101;
-  --accent-3: 255, 186, 10;
-  --accent-4: 255, 80, 10;
-}
-
-.bg-accent-1 {
-  background: rgb(var(--accent-1));
-}
-
-.bg-accent-2 {
-  background: rgb(var(--accent-2));
-}
-
-.bg-accent-3 {
-  background: rgb(var(--accent-3));
-}
-
-.bg-accent-4 {
-  background: rgb(var(--accent-4));
+  --accent-1: 245, 69, 0;
+  --accent-2: 0, 220, 245;
+  --accent-3: 245, 175, 0;
+  --accent-4: 27, 197, 55;
 }
 
 .rgb-animation {
@@ -49,5 +33,28 @@ body {
 
   100% {
       background-color: rgb(var(--accent-4));
+  }
+}
+
+.shake {
+  animation: shake 0.82s cubic-bezier(.36,.07,.19,.97) both;
+  transform: translate3d(0, 0, 0);
+}
+
+@keyframes shake {
+  10%, 90% {
+    transform: translate3d(-1px, 0, 0);
+  }
+  
+  20%, 80% {
+    transform: translate3d(2px, 0, 0);
+  }
+
+  30%, 50%, 70% {
+    transform: translate3d(-4px, 0, 0);
+  }
+
+  40%, 60% {
+    transform: translate3d(4px, 0, 0);
   }
 }

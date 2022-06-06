@@ -1,19 +1,21 @@
+import { useActor } from "@xstate/react"
 import React, { useState } from "react"
 import { Link } from "react-router-dom"
-import { SecondaryButton, PrimaryButton } from "../../components/Button"
-import { Input } from "../../components/Input"
+import { PrimaryButton, SecondaryButton } from "../../../components/Button"
+import { Input } from "../../../components/Input"
+import { JoinStateScreenProps } from "./JoinScreen"
 
-export type EnterRoomCodeStateProps = {
+export type EnterRoomCodeStateProps = JoinStateScreenProps & {
     onSubmit: (roomCode: string) => void
 }
 
-const EnterRoomCodeState: React.FC<EnterRoomCodeStateProps> = ({ onSubmit }) => {
+const EnterRoomCodeState: React.FC<EnterRoomCodeStateProps> = ({ state, onSubmit }) => {
     const [roomCode, setRoomCode] = useState<string>("")
 
     return (
         <div className="flex flex-col flex-1 rgb-animation">
             <div className="flex justify-end px-8 py-4">
-                <Link to="host">
+                <Link to="quiz">
                     <SecondaryButton>Host a game</SecondaryButton>
                 </Link>
             </div>

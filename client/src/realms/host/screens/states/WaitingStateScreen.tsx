@@ -1,8 +1,8 @@
 import React from "react"
 import clsx from "clsx"
 import { useActor } from "@xstate/react"
-import { PrimaryButton } from "../../../components/Button"
-import { PropsWithClassName } from "../../../types"
+import { PrimaryButton } from "../../../../components/Button"
+import { PropsWithClassName } from "../../../../types"
 import { HostStateScreenProps } from "../HostScreen"
 import { Player } from "shared"
 

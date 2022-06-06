@@ -1,6 +1,6 @@
 import React, { useState } from "react"
-import { PrimaryButton } from "../../components/Button"
-import { Input } from "../../components/Input"
+import { PrimaryButton } from "../../../components/Button"
+import { Input } from "../../../components/Input"
 
 export type EnterNameStateProps = {
     onSubmit: (name: string) => void

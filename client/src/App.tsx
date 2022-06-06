@@ -1,13 +1,15 @@
-import { JoinScreen } from "./screens/JoinScreen"
+import { JoinScreen } from "./realms/player/screens/JoinScreen"
 import { HashRouter, Route, Routes } from "react-router-dom"
-import { HostScreen } from "./screens/host/HostScreen"
+import { HostScreen } from "./realms/host/screens/HostScreen"
 
 function App() {
     return (
         <HashRouter>
             <Routes>
                 <Route path="/" element={<JoinScreen />} />
-                <Route path="/host" element={<HostScreen />} />
+                {/*  TODO: */}
+                <Route path="/quiz" element={<HostScreen />} />
+                <Route path="/quiz/:quizId/host" element={<HostScreen />} />
             </Routes>
         </HashRouter>
     )

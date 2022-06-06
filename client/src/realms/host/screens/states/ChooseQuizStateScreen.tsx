@@ -1,5 +1,5 @@
 import React from "react"
-import { PrimaryButton } from "../../../components/Button"
+import { PrimaryButton } from "../../../../components/Button"
 import { HostStateScreenProps } from "../HostScreen"
 
 export type ChooseQuizStateScreenProps = HostStateScreenProps
